@@ -511,27 +511,49 @@ def train(args: argparse.Namespace):
     # Load datasets from Hugging Face
     logger.info(f"Loading datasets from Hugging Face: {args.data_path}")
 
-    # Try to load with common split names
+    # Try different loading strategies for different dataset formats
+    train_dataset = None
+    eval_dataset = None
+
+    # Strategy 1: Try loading without config (e.g., lighteval/MATH)
     try:
-        # First try standard 'train' and 'test' splits
         train_dataset = load_dataset(args.data_path, split="train")
         logger.info(f"Loaded {len(train_dataset)} training samples")
-    except Exception as e:
-        # Try 'main' split (used by some datasets like openai/gsm8k)
-        logger.info(f"'train' split not found, trying 'main' split: {e}")
-        train_dataset = load_dataset(args.data_path, split="main")
-        logger.info(f"Loaded {len(train_dataset)} training samples from 'main' split")
+    except Exception as e1:
+        logger.info(f"Failed to load with split='train': {e1}")
 
+        # Strategy 2: Try with 'main' config (e.g., openai/gsm8k)
+        try:
+            train_dataset = load_dataset(args.data_path, "main", split="train")
+            logger.info(f"Loaded {len(train_dataset)} training samples using 'main' config")
+        except Exception as e2:
+            logger.error(f"Failed to load with 'main' config: {e2}")
+            raise RuntimeError(
+                f"Could not load training data from {args.data_path}. "
+                f"Tried: (1) load_dataset('{args.data_path}', split='train'), "
+                f"(2) load_dataset('{args.data_path}', 'main', split='train'). "
+                f"Please check the dataset path and format."
+            )
+
+    # Try to load evaluation split
     try:
         eval_dataset = load_dataset(args.data_path, split="test")
         logger.info(f"Loaded {len(eval_dataset)} evaluation samples")
-    except Exception as e:
-        # For datasets without test split, create a small validation set from train
-        logger.warning(f"'test' split not found: {e}. Creating validation set from training data.")
-        train_test_split = train_dataset.train_test_split(test_size=min(500, len(train_dataset) // 10), seed=args.seed)
-        train_dataset = train_test_split["train"]
-        eval_dataset = train_test_split["test"]
-        logger.info(f"Split into {len(train_dataset)} train and {len(eval_dataset)} eval samples")
+    except Exception as e1:
+        # Try with 'main' config
+        try:
+            eval_dataset = load_dataset(args.data_path, "main", split="test")
+            logger.info(f"Loaded {len(eval_dataset)} evaluation samples using 'main' config")
+        except Exception as e2:
+            # For datasets without test split, create validation set from train
+            logger.warning(f"'test' split not found. Creating validation set from training data.")
+            train_test_split = train_dataset.train_test_split(
+                test_size=min(500, len(train_dataset) // 10),
+                seed=args.seed
+            )
+            train_dataset = train_test_split["train"]
+            eval_dataset = train_test_split["test"]
+            logger.info(f"Split into {len(train_dataset)} train and {len(eval_dataset)} eval samples")
 
     # Apply preprocessing to map examples to the format we need
     train_dataset = train_dataset.map(preprocess_math_example, remove_columns=train_dataset.column_names)
