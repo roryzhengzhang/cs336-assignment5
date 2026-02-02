@@ -4,7 +4,7 @@ Complete SFT Training Script for MATH Dataset
 
 This script implements supervised fine-tuning on the MATH dataset with:
 - Support for Hugging Face models and datasets
-- Full wandb integration with rich metrics
+- Full SwanLab integration with rich metrics
 - Gradient accumulation and mixed precision training
 - Evaluation with verified math grading
 - Checkpointing and resumption capabilities
@@ -29,7 +29,7 @@ from transformers import (
     PreTrainedTokenizerBase,
     get_cosine_schedule_with_warmup,
 )
-import wandb
+import swanlab
 from datasets import load_dataset
 
 from cs336_alignment.tokenize_prompt_and_output import tokenize_prompt_and_output
@@ -314,24 +314,18 @@ def parse_args() -> argparse.Namespace:
         help="Temperature for generation (0.0 = greedy)"
     )
 
-    # Wandb
+    # SwanLab
     parser.add_argument(
-        "--wandb_project",
+        "--swanlab_project",
         type=str,
         default="cs336-sft-math",
-        help="Wandb project name"
+        help="SwanLab project name"
     )
     parser.add_argument(
-        "--wandb_run_name",
+        "--swanlab_run_name",
         type=str,
         default=None,
-        help="Wandb run name"
-    )
-    parser.add_argument(
-        "--wandb_entity",
-        type=str,
-        default=None,
-        help="Wandb entity/team"
+        help="SwanLab experiment/run name"
     )
 
     # Checkpointing
@@ -584,11 +578,10 @@ def train(args: argparse.Namespace):
     device = torch.device("cuda")
     logger.info(f"Using device: {device}")
 
-    # Initialize wandb
-    wandb.init(
-        project=args.wandb_project,
-        name=args.wandb_run_name,
-        entity=args.wandb_entity,
+    # Initialize swanlab
+    swanlab.init(
+        project=args.swanlab_project,
+        experiment_name=args.swanlab_run_name,
         config=vars(args),
     )
 
@@ -720,7 +713,7 @@ def train(args: argparse.Namespace):
                 global_step += 1
 
                 # Log training metrics
-                wandb.log({
+                swanlab.log({
                     "train/loss": loss.item(),
                     "train/learning_rate": scheduler.get_last_lr()[0],
                     "train/grad_norm": grad_norm.item(),
@@ -746,7 +739,7 @@ def train(args: argparse.Namespace):
                     )
 
                     # Log evaluation metrics
-                    wandb.log({
+                    swanlab.log({
                         "eval/accuracy": eval_metrics["accuracy"],
                         "eval/avg_format_reward": eval_metrics["avg_format_reward"],
                         "eval/avg_answer_reward": eval_metrics["avg_answer_reward"],
@@ -770,8 +763,8 @@ def train(args: argparse.Namespace):
                         ]
                         for ex in examples
                     ]
-                    wandb.log({
-                        "eval/sample_generations": wandb.Table(
+                    swanlab.log({
+                        "eval/sample_generations": swanlab.Table(
                             columns=["Prompt", "Response", "Ground Truth", "Reward"],
                             data=table_data,
                         )
@@ -819,7 +812,7 @@ def train(args: argparse.Namespace):
         step=global_step,
     )
 
-    wandb.log({
+    swanlab.log({
         "final/accuracy": final_metrics["accuracy"],
         "final/avg_format_reward": final_metrics["avg_format_reward"],
         "final/avg_answer_reward": final_metrics["avg_answer_reward"],
@@ -828,7 +821,7 @@ def train(args: argparse.Namespace):
     logger.info("Training complete!")
     logger.info(f"Final accuracy: {final_metrics['accuracy']:.4f}")
 
-    wandb.finish()
+    swanlab.finish()
 
 
 def main():

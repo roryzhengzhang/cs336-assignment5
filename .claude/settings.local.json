@@ -10,7 +10,13 @@
       "mcp__confluence__confluence_getContent",
       "Bash(chmod:*)",
       "Bash(~/.claude/hooks/notify.sh)",
-      "mcp__confluence__confluence_updateContent"
+      "mcp__confluence__confluence_updateContent",
+      "Bash(git commit:*)",
+      "Bash(gh repo create:*)",
+      "Bash(ssh:*)",
+      "Bash(ssh-keyscan:*)",
+      "Bash(~/.ssh/known_hosts)",
+      "Bash(terminal-notifier:*)"
     ]
   }
 }

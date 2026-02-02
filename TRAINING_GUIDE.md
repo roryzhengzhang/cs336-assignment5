@@ -11,8 +11,8 @@ python train_sft_math.py \
   --model_path Qwen/Qwen2.5-Math-1.5B \
   --data_path lighteval/MATH \
   --output_dir ./outputs/sft-math-run1 \
-  --wandb_project "cs336-sft-math" \
-  --wandb_run_name "qwen-math-1.5b-sft"
+  --swanlab_project cs336-sft-math \
+  --swanlab_run_name qwen-math-1.5b-sft
 ```
 
 ### Using Local Paths
@@ -22,7 +22,7 @@ python train_sft_math.py \
   --model_path /data/models/Qwen2.5-Math-1.5B \
   --data_path /data/gsm8k \
   --output_dir ./outputs/sft-math-run1 \
-  --wandb_project "cs336-sft-math"
+  --swanlab_project cs336-sft-math
 ```
 
 ### Debug Mode (Fast Testing)
@@ -55,8 +55,8 @@ python train_sft_math.py \
   --max_eval_samples 500 \
   --generation_max_length 512 \
   --generation_temperature 0.0 \
-  --wandb_project "cs336-sft-math" \
-  --wandb_run_name "qwen-math-baseline" \
+  --swanlab_project cs336-sft-math \
+  --swanlab_run_name qwen-math-baseline \
   --save_steps 500 \
   --keep_last_n_checkpoints 3 \
   --seed 42
@@ -109,11 +109,11 @@ python train_sft_math.py \
 - **Grading**: Uses verified math grader (`question_only_reward_fn`) with support for LaTeX boxed answers
 - **Metrics**: Accuracy, format reward, answer reward, token entropy, response length
 
-### Wandb Logging
+### SwanLab Logging
 - **Training Metrics**: loss, learning rate, gradient norm
 - **Evaluation Metrics**: accuracy, rewards, entropy, response lengths
 - **Sample Generations**: Interactive table with prompt/response/ground truth
-- **Real-time Updates**: All metrics logged to wandb dashboard
+- **Real-time Updates**: All metrics logged to SwanLab dashboard
 
 ### Checkpointing
 - **Auto-save**: Every N steps and end of each epoch
@@ -135,9 +135,9 @@ outputs/
         └── ...
 ```
 
-## Monitoring with Wandb
+## Monitoring with SwanLab
 
-The script logs comprehensive metrics to Wandb:
+The script logs comprehensive metrics to SwanLab:
 
 ### Training Phase
 - `train/loss`: Cross-entropy loss on response tokens
@@ -224,7 +224,7 @@ This uses the exact configuration you specified with Qwen2.5-Math-1.5B.
 
 After training completes:
 
-1. **Check Wandb Dashboard**: Review training curves and sample generations
+1. **Check SwanLab Dashboard**: Review training curves and sample generations
 2. **Load Best Checkpoint**: Select checkpoint with highest eval accuracy
 3. **Run Additional Evaluation**: Test on held-out problems
 4. **Experiment Tracking**: Compare runs with different hyperparameters
