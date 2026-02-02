@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Complete SFT Training Script for MATH Dataset using Qwen2.5-Math-1.5B
+Complete SFT Training Script for MATH Dataset
 
 This script implements supervised fine-tuning on the MATH dataset with:
+- Support for Hugging Face models and datasets
 - Full wandb integration with rich metrics
 - Gradient accumulation and mixed precision training
 - Evaluation with verified math grading
@@ -29,6 +30,7 @@ from transformers import (
     get_cosine_schedule_with_warmup,
 )
 import wandb
+from datasets import load_dataset
 
 from cs336_alignment.tokenize_prompt_and_output import tokenize_prompt_and_output
 from cs336_alignment.get_response_log_probs import get_response_log_probs
@@ -72,50 +74,67 @@ class MATHDataset(Dataset):
         logger.info(f"Loaded {len(self.data)} samples from {split} split")
 
     def _load_data(self) -> List[Dict]:
-        """Load MATH dataset from disk."""
+        """Load MATH dataset from disk or Hugging Face."""
         data = []
 
-        # Try different possible file formats
-        possible_files = [
-            self.data_path / f"{self.split}.jsonl",
-            self.data_path / f"{self.split}.json",
-            self.data_path / self.split / "data.jsonl",
-            self.data_path / self.split / "data.json",
-        ]
+        # Check if data_path looks like a local path
+        path = Path(self.data_path)
+        is_local_path = path.exists() or "/" in str(self.data_path) or "\\" in str(self.data_path)
 
-        loaded = False
-        for filepath in possible_files:
-            if filepath.exists():
-                logger.info(f"Loading data from {filepath}")
-                if filepath.suffix == ".jsonl":
-                    with open(filepath, "r") as f:
-                        for line in f:
-                            data.append(json.loads(line))
-                else:
-                    with open(filepath, "r") as f:
-                        data = json.load(f)
-                loaded = True
-                break
+        # Try loading from local files first
+        if is_local_path:
+            # Try different possible file formats
+            possible_files = [
+                path / f"{self.split}.jsonl",
+                path / f"{self.split}.json",
+                path / self.split / "data.jsonl",
+                path / self.split / "data.json",
+            ]
 
-        if not loaded:
-            # Try loading from subdirectories (MATH dataset structure)
-            split_dir = self.data_path / self.split
-            if split_dir.exists() and split_dir.is_dir():
-                logger.info(f"Loading from subdirectories in {split_dir}")
-                for subdir in split_dir.iterdir():
-                    if subdir.is_dir():
-                        for file in subdir.glob("*.json"):
-                            with open(file, "r") as f:
-                                data.append(json.load(f))
-                loaded = True
+            loaded = False
+            for filepath in possible_files:
+                if filepath.exists():
+                    logger.info(f"Loading data from {filepath}")
+                    if filepath.suffix == ".jsonl":
+                        with open(filepath, "r") as f:
+                            for line in f:
+                                data.append(json.loads(line))
+                    else:
+                        with open(filepath, "r") as f:
+                            data = json.load(f)
+                    loaded = True
+                    break
 
-        if not loaded:
-            raise FileNotFoundError(
-                f"Could not find MATH dataset at {self.data_path}. "
-                f"Tried: {[str(p) for p in possible_files]}"
-            )
+            if not loaded:
+                # Try loading from subdirectories (MATH dataset structure)
+                split_dir = path / self.split
+                if split_dir.exists() and split_dir.is_dir():
+                    logger.info(f"Loading from subdirectories in {split_dir}")
+                    for subdir in split_dir.iterdir():
+                        if subdir.is_dir():
+                            for file in subdir.glob("*.json"):
+                                with open(file, "r") as f:
+                                    data.append(json.load(f))
+                    loaded = True
 
-        return data
+            if loaded:
+                return data
+
+        # Try loading from Hugging Face
+        try:
+            logger.info(f"Attempting to load dataset from Hugging Face: {self.data_path}")
+            hf_dataset = load_dataset(str(self.data_path), split=self.split)
+            data = list(hf_dataset)
+            logger.info(f"Successfully loaded {len(data)} samples from Hugging Face")
+            return data
+        except Exception as e:
+            logger.error(f"Failed to load from Hugging Face: {e}")
+
+        # If we get here, nothing worked
+        raise FileNotFoundError(
+            f"Could not find dataset at {self.data_path}. "
+            f"Tried local paths and Hugging Face datasets."
+        )
 
     def __len__(self) -> int:
         return len(self.data)
@@ -198,7 +217,7 @@ def parse_args() -> argparse.Namespace:
         "--model_path",
         type=str,
         required=True,
-        help="Path to Qwen model"
+        help="Path to model or Hugging Face model identifier (e.g., 'Qwen/Qwen2.5-Math-1.5B')"
     )
     parser.add_argument(
         "--tokenizer_path",
@@ -210,7 +229,7 @@ def parse_args() -> argparse.Namespace:
         "--data_path",
         type=str,
         required=True,
-        help="Path to MATH dataset directory"
+        help="Path to MATH dataset directory or Hugging Face dataset identifier (e.g., 'lighteval/MATH')"
     )
     parser.add_argument(
         "--output_dir",
@@ -814,13 +833,6 @@ def train(args: argparse.Namespace):
 
 def main():
     args = parse_args()
-
-    # Validate paths
-    if not Path(args.model_path).exists():
-        raise FileNotFoundError(f"Model path does not exist: {args.model_path}")
-
-    if not Path(args.data_path).exists():
-        raise FileNotFoundError(f"Data path does not exist: {args.data_path}")
 
     # Create output directory
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
