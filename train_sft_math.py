@@ -508,52 +508,74 @@ def train(args: argparse.Namespace):
     model = model.to(device)
     model.train()
 
-    # Load datasets from Hugging Face
-    logger.info(f"Loading datasets from Hugging Face: {args.data_path}")
+    # Load datasets
+    logger.info(f"Loading datasets from: {args.data_path}")
 
     # Try different loading strategies for different dataset formats
     train_dataset = None
     eval_dataset = None
 
-    # Strategy 1: Try loading with split parameter directly (e.g., lighteval/MATH)
-    try:
-        train_dataset = load_dataset(args.data_path, split="train")
-        logger.info(f"Loaded {len(train_dataset)} training samples")
-
-        try:
-            eval_dataset = load_dataset(args.data_path, split="test")
-            logger.info(f"Loaded {len(eval_dataset)} evaluation samples")
-        except:
-            pass
-
-    except Exception as e1:
-        logger.info(f"Failed to load with split='train': {e1}")
-
-        # Strategy 2: Try loading DatasetDict with config (e.g., openai/gsm8k with 'main')
-        try:
-            logger.info(f"Trying to load with 'main' config...")
-            dataset_dict = load_dataset(args.data_path, "main")
-
-            # Access train split
-            if "train" in dataset_dict:
-                train_dataset = dataset_dict["train"]
-                logger.info(f"Loaded {len(train_dataset)} training samples from 'main' config")
-            else:
-                raise RuntimeError(f"'train' split not found in dataset")
-
-            # Access test split
+    # Strategy 0: Check if it's a local directory with JSONL files
+    data_path = Path(args.data_path)
+    if data_path.is_dir():
+        train_file = data_path / "train.jsonl"
+        test_file = data_path / "test.jsonl"
+        
+        if train_file.exists():
+            logger.info(f"Loading local JSONL files from {args.data_path}")
+            data_files = {"train": str(train_file)}
+            if test_file.exists():
+                data_files["test"] = str(test_file)
+            
+            dataset_dict = load_dataset("json", data_files=data_files)
+            train_dataset = dataset_dict["train"]
+            logger.info(f"Loaded {len(train_dataset)} training samples from local JSONL")
+            
             if "test" in dataset_dict:
                 eval_dataset = dataset_dict["test"]
-                logger.info(f"Loaded {len(eval_dataset)} evaluation samples from 'main' config")
+                logger.info(f"Loaded {len(eval_dataset)} evaluation samples from local JSONL")
 
-        except Exception as e2:
-            logger.error(f"Failed to load with 'main' config: {e2}")
-            raise RuntimeError(
-                f"Could not load training data from {args.data_path}. "
-                f"Tried: (1) load_dataset('{args.data_path}', split='train'), "
-                f"(2) load_dataset('{args.data_path}', 'main'). "
-                f"Please check the dataset path and format."
-            )
+    # Strategy 1: Try loading with split parameter directly (e.g., lighteval/MATH)
+    if train_dataset is None:
+        try:
+            train_dataset = load_dataset(args.data_path, split="train")
+            logger.info(f"Loaded {len(train_dataset)} training samples")
+
+            try:
+                eval_dataset = load_dataset(args.data_path, split="test")
+                logger.info(f"Loaded {len(eval_dataset)} evaluation samples")
+            except:
+                pass
+
+        except Exception as e1:
+            logger.info(f"Failed to load with split='train': {e1}")
+
+            # Strategy 2: Try loading DatasetDict with config (e.g., openai/gsm8k with 'main')
+            try:
+                logger.info(f"Trying to load with 'main' config...")
+                dataset_dict = load_dataset(args.data_path, "main")
+
+                # Access train split
+                if "train" in dataset_dict:
+                    train_dataset = dataset_dict["train"]
+                    logger.info(f"Loaded {len(train_dataset)} training samples from 'main' config")
+                else:
+                    raise RuntimeError(f"'train' split not found in dataset")
+
+                # Access test split
+                if "test" in dataset_dict:
+                    eval_dataset = dataset_dict["test"]
+                    logger.info(f"Loaded {len(eval_dataset)} evaluation samples from 'main' config")
+
+            except Exception as e2:
+                logger.error(f"Failed to load with 'main' config: {e2}")
+                raise RuntimeError(
+                    f"Could not load training data from {args.data_path}. "
+                    f"Tried: (1) local JSONL files, "
+                    f"(2) load_dataset('{args.data_path}', split='train'), "
+                    f"(3) load_dataset('{args.data_path}', 'main'). "
+                    f"Please check the dataset path and format."
+                )
 
     # If eval_dataset is still None, create validation set from train
     if eval_dataset is None:

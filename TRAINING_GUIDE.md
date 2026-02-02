@@ -9,7 +9,7 @@ This guide explains how to use the complete SFT training script for the MATH dat
 ```bash
 python train_sft_math.py \
   --model_path Qwen/Qwen2.5-Math-1.5B \
-  --data_path lighteval/MATH \
+  --data_path data/gsm8k \
   --output_dir ./outputs/sft-math-run1 \
   --swanlab_project cs336-sft-math \
   --swanlab_run_name qwen-math-1.5b-sft

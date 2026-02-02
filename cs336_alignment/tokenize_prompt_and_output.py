@@ -41,10 +41,19 @@ def tokenize_prompt_and_output(
 
         max_len = max(max_len, len(seq_input_ids)-1)
     
-    # pad the input ids and labels to the max length
-    input_ids = torch.nn.functional.pad(input_ids, (0, max_len - len(input_ids), 0, 0), value=tokenizer.pad_token_id)
-    labels = torch.nn.functional.pad(labels, (0, max_len - len(labels), 0, 0), value=tokenizer.pad_token_id)
-    response_mask = torch.nn.functional.pad(response_mask, (0, max_len - len(response_mask), 0, 0), value=0)
+    # pad each tensor individually and stack into batch
+    input_ids = torch.stack([
+        torch.nn.functional.pad(ids, (0, max_len - len(ids)), value=tokenizer.pad_token_id)
+        for ids in input_ids
+    ])
+    labels = torch.stack([
+        torch.nn.functional.pad(lbl, (0, max_len - len(lbl)), value=tokenizer.pad_token_id)
+        for lbl in labels
+    ])
+    response_mask = torch.stack([
+        torch.nn.functional.pad(mask, (0, max_len - len(mask)), value=0)
+        for mask in response_mask
+    ])
 
     return {
         "input_ids": input_ids,
