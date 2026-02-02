@@ -11,17 +11,16 @@ This script implements supervised fine-tuning on the MATH dataset with:
 """
 
 import argparse
-import json
 import logging
 import os
 import random
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -45,125 +44,31 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class MATHDataset(Dataset):
-    """Dataset class for MATH problem-solution pairs."""
+def preprocess_math_example(example: Dict) -> Dict[str, str]:
+    """
+    Preprocess a single math example for training.
 
-    def __init__(
-        self,
-        data_path: str,
-        split: str = "train",
-        max_samples: Optional[int] = None,
-    ):
-        """
-        Initialize MATH dataset.
+    Args:
+        example: Raw example from dataset with fields like 'problem'/'question' and 'solution'/'answer'
 
-        Args:
-            data_path: Path to MATH dataset directory
-            split: 'train' or 'test'
-            max_samples: Maximum number of samples to load (for debugging)
-        """
-        self.data_path = Path(data_path)
-        self.split = split
+    Returns:
+        dict with 'prompt', 'output', and 'ground_truth' keys
+    """
+    # Extract problem and solution - handle different field names
+    problem = example.get("problem", example.get("question", ""))
+    solution = example.get("solution", example.get("answer", ""))
 
-        # Load data from JSON/JSONL files
-        self.data = self._load_data()
+    # Format prompt
+    prompt = f"Solve this math problem:\n\n{problem}\n\nAnswer:"
 
-        if max_samples is not None:
-            self.data = self.data[:max_samples]
+    # Extract ground truth answer from solution
+    ground_truth = extract_answer(solution) if "\\boxed" in solution else solution
 
-        logger.info(f"Loaded {len(self.data)} samples from {split} split")
-
-    def _load_data(self) -> List[Dict]:
-        """Load MATH dataset from disk or Hugging Face."""
-        data = []
-
-        # Check if data_path looks like a local path
-        path = Path(self.data_path)
-        is_local_path = path.exists() or "/" in str(self.data_path) or "\\" in str(self.data_path)
-
-        # Try loading from local files first
-        if is_local_path:
-            # Try different possible file formats
-            possible_files = [
-                path / f"{self.split}.jsonl",
-                path / f"{self.split}.json",
-                path / self.split / "data.jsonl",
-                path / self.split / "data.json",
-            ]
-
-            loaded = False
-            for filepath in possible_files:
-                if filepath.exists():
-                    logger.info(f"Loading data from {filepath}")
-                    if filepath.suffix == ".jsonl":
-                        with open(filepath, "r") as f:
-                            for line in f:
-                                data.append(json.loads(line))
-                    else:
-                        with open(filepath, "r") as f:
-                            data = json.load(f)
-                    loaded = True
-                    break
-
-            if not loaded:
-                # Try loading from subdirectories (MATH dataset structure)
-                split_dir = path / self.split
-                if split_dir.exists() and split_dir.is_dir():
-                    logger.info(f"Loading from subdirectories in {split_dir}")
-                    for subdir in split_dir.iterdir():
-                        if subdir.is_dir():
-                            for file in subdir.glob("*.json"):
-                                with open(file, "r") as f:
-                                    data.append(json.load(f))
-                    loaded = True
-
-            if loaded:
-                return data
-
-        # Try loading from Hugging Face
-        try:
-            logger.info(f"Attempting to load dataset from Hugging Face: {self.data_path}")
-            hf_dataset = load_dataset(str(self.data_path), split=self.split)
-            data = list(hf_dataset)
-            logger.info(f"Successfully loaded {len(data)} samples from Hugging Face")
-            return data
-        except Exception as e:
-            logger.error(f"Failed to load from Hugging Face: {e}")
-
-        # If we get here, nothing worked
-        raise FileNotFoundError(
-            f"Could not find dataset at {self.data_path}. "
-            f"Tried local paths and Hugging Face datasets."
-        )
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-    def __getitem__(self, idx: int) -> Dict[str, str]:
-        """
-        Get a single example.
-
-        Returns:
-            dict with 'prompt', 'output', and 'ground_truth' keys
-        """
-        item = self.data[idx]
-
-        # Extract problem and solution
-        # MATH dataset typically has 'problem' and 'solution' fields
-        problem = item.get("problem", item.get("question", ""))
-        solution = item.get("solution", item.get("answer", ""))
-
-        # Format prompt
-        prompt = f"Solve this math problem:\n\n{problem}\n\nAnswer:"
-
-        # Extract ground truth answer from solution
-        ground_truth = extract_answer(solution) if "\\boxed" in solution else solution
-
-        return {
-            "prompt": prompt,
-            "output": solution,
-            "ground_truth": ground_truth or solution,
-        }
+    return {
+        "prompt": prompt,
+        "output": solution,
+        "ground_truth": ground_truth or solution,
+    }
 
 
 def collate_fn(batch: List[Dict], tokenizer: PreTrainedTokenizerBase) -> Dict:
@@ -603,19 +508,45 @@ def train(args: argparse.Namespace):
     model = model.to(device)
     model.train()
 
-    # Create datasets
-    logger.info("Loading datasets...")
-    train_dataset = MATHDataset(
-        data_path=args.data_path,
-        split="train",
-        max_samples=100 if args.debug else None,
-    )
+    # Load datasets from Hugging Face
+    logger.info(f"Loading datasets from Hugging Face: {args.data_path}")
 
-    eval_dataset = MATHDataset(
-        data_path=args.data_path,
-        split="test",
-        max_samples=50 if args.debug else args.max_eval_samples,
-    )
+    # Try to load with common split names
+    try:
+        # First try standard 'train' and 'test' splits
+        train_dataset = load_dataset(args.data_path, split="train")
+        logger.info(f"Loaded {len(train_dataset)} training samples")
+    except Exception as e:
+        # Try 'main' split (used by some datasets like openai/gsm8k)
+        logger.info(f"'train' split not found, trying 'main' split: {e}")
+        train_dataset = load_dataset(args.data_path, split="main")
+        logger.info(f"Loaded {len(train_dataset)} training samples from 'main' split")
+
+    try:
+        eval_dataset = load_dataset(args.data_path, split="test")
+        logger.info(f"Loaded {len(eval_dataset)} evaluation samples")
+    except Exception as e:
+        # For datasets without test split, create a small validation set from train
+        logger.warning(f"'test' split not found: {e}. Creating validation set from training data.")
+        train_test_split = train_dataset.train_test_split(test_size=min(500, len(train_dataset) // 10), seed=args.seed)
+        train_dataset = train_test_split["train"]
+        eval_dataset = train_test_split["test"]
+        logger.info(f"Split into {len(train_dataset)} train and {len(eval_dataset)} eval samples")
+
+    # Apply preprocessing to map examples to the format we need
+    train_dataset = train_dataset.map(preprocess_math_example, remove_columns=train_dataset.column_names)
+    eval_dataset = eval_dataset.map(preprocess_math_example, remove_columns=eval_dataset.column_names)
+
+    # Limit samples for debugging
+    if args.debug:
+        train_dataset = train_dataset.select(range(min(100, len(train_dataset))))
+        eval_dataset = eval_dataset.select(range(min(50, len(eval_dataset))))
+        logger.info(f"Debug mode: using {len(train_dataset)} train and {len(eval_dataset)} eval samples")
+
+    # Limit eval samples if specified
+    if len(eval_dataset) > args.max_eval_samples:
+        eval_dataset = eval_dataset.select(range(args.max_eval_samples))
+        logger.info(f"Limited evaluation to {args.max_eval_samples} samples")
 
     # Create dataloaders
     train_dataloader = DataLoader(
