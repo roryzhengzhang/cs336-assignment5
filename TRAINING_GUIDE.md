@@ -1,26 +1,36 @@
 # SFT Training on MATH Dataset - Usage Guide
 
-This guide explains how to use the complete SFT training script for the MATH dataset using Qwen2.5-Math-1.5B.
+This guide explains how to use the complete SFT training script for the MATH dataset with support for both local models and Hugging Face Hub.
 
 ## Quick Start
 
-### Basic Training Run
+### Using Hugging Face Models and Datasets (Recommended)
 
 ```bash
 python train_sft_math.py \
-  --model_path /data/a5-alignment/models/Qwen2.5-Math-1.5B \
-  --data_path /data/a5-alignment/datasets/MATH \
+  --model_path Qwen/Qwen2.5-Math-1.5B \
+  --data_path lighteval/MATH \
   --output_dir ./outputs/sft-math-run1 \
   --wandb_project "cs336-sft-math" \
   --wandb_run_name "qwen-math-1.5b-sft"
+```
+
+### Using Local Paths
+
+```bash
+python train_sft_math.py \
+  --model_path /data/models/Qwen2.5-Math-1.5B \
+  --data_path /data/gsm8k \
+  --output_dir ./outputs/sft-math-run1 \
+  --wandb_project "cs336-sft-math"
 ```
 
 ### Debug Mode (Fast Testing)
 
 ```bash
 python train_sft_math.py \
-  --model_path /data/a5-alignment/models/Qwen2.5-Math-1.5B \
-  --data_path /data/a5-alignment/datasets/MATH \
+  --model_path Qwen/Qwen2.5-Math-1.5B \
+  --data_path lighteval/MATH \
   --debug \
   --num_epochs 1 \
   --eval_steps 10
@@ -30,8 +40,8 @@ python train_sft_math.py \
 
 ```bash
 python train_sft_math.py \
-  --model_path /data/a5-alignment/models/Qwen2.5-Math-1.5B \
-  --data_path /data/a5-alignment/datasets/MATH \
+  --model_path Qwen/Qwen2.5-Math-1.5B \
+  --data_path lighteval/MATH \
   --output_dir ./outputs/sft-math-experiment \
   --learning_rate 1e-5 \
   --batch_size 4 \
@@ -52,22 +62,41 @@ python train_sft_math.py \
   --seed 42
 ```
 
+## Hugging Face Integration
+
+The script now supports both local files and Hugging Face Hub:
+
+### Model Loading
+- **Hugging Face**: `--model_path Qwen/Qwen2.5-Math-1.5B`
+- **Local**: `--model_path /path/to/model`
+
+Models from Hugging Face are automatically downloaded and cached.
+
+### Dataset Loading
+- **Hugging Face**: `--data_path lighteval/MATH` or `--data_path hendrycks/math`
+- **Local JSON/JSONL**: `--data_path /path/to/dataset`
+- **Local MATH structure**: `--data_path /path/to/MATH` (with train/test subdirs)
+
+The script automatically detects whether you're using a local path or HF identifier.
+
 ## Resume from Checkpoint
 
 ```bash
 python train_sft_math.py \
-  --model_path /data/a5-alignment/models/Qwen2.5-Math-1.5B \
-  --data_path /data/a5-alignment/datasets/MATH \
+  --model_path Qwen/Qwen2.5-Math-1.5B \
+  --data_path lighteval/MATH \
   --resume_from_checkpoint ./outputs/sft-math-run1/checkpoint-1000
 ```
 
 ## Key Features
 
 ### Data Loading
-- Automatically detects MATH dataset format (JSON/JSONL)
-- Supports standard MATH directory structure with train/test splits
-- Formats prompts as: "Solve this math problem:\n\n{problem}\n\nAnswer:"
-- Uses `tokenize_prompt_and_output()` to create proper response masks
+- **Hugging Face Hub**: Automatically downloads and loads datasets (e.g., `lighteval/MATH`)
+- **Local Files**: Supports JSON/JSONL formats
+- **Directory Structure**: Handles standard MATH subdirectory organization (train/test splits)
+- **Auto-detection**: Determines whether path is local or HF identifier
+- **Prompt Formatting**: "Solve this math problem:\n\n{problem}\n\nAnswer:"
+- **Response Masks**: Uses `tokenize_prompt_and_output()` for proper masking
 
 ### Training
 - **Mixed Precision**: Uses bfloat16 with FlashAttention2 for efficiency
@@ -157,12 +186,17 @@ The script logs comprehensive metrics to Wandb:
 - Increase `--batch_size` if memory allows
 
 ### Dataset Not Found
-- Verify `--data_path` points to correct directory
-- Check dataset has train/test splits
-- Look at script logs for attempted file paths
+- **Hugging Face**: Verify dataset identifier is correct (e.g., `lighteval/MATH`)
+- **Local**: Ensure `--data_path` points to correct directory
+- Check dataset has train/test splits or JSON/JSONL files
+- Look at script logs for attempted file paths and error messages
+- Try using a Hugging Face dataset if local loading fails
 
 ### Model Not Loading
-- Ensure model path contains `config.json` and model weights
+- **Hugging Face**: Verify model identifier is correct (e.g., `Qwen/Qwen2.5-Math-1.5B`)
+- **Local**: Ensure path contains `config.json` and model weights
+- Check internet connection if downloading from HF Hub
+- Verify Hugging Face cache has sufficient disk space (`~/.cache/huggingface`)
 - Check tokenizer is compatible
 - Verify CUDA and PyTorch are properly installed
 
