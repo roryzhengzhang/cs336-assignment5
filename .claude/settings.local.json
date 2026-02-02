@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gpg:*)",
+      "Bash(tree:*)",
+      "Bash(uv run python:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python:*)",
+      "mcp__confluence__confluence_searchContent",
+      "mcp__confluence__confluence_getContent",
+      "Bash(chmod:*)",
+      "Bash(~/.claude/hooks/notify.sh)",
+      "mcp__confluence__confluence_updateContent"
+    ]
+  }
+}
